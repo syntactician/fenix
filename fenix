@@ -1,0 +1,124 @@
+#!/bin/sh -eu
+# fenix -- respawn a process unless the user really wants to quit
+
+PROGNAME="${0##*/}"
+
+about()
+{
+  echo "$PROGNAME -- respawn a process unless the user really wants to quit"
+}
+
+usage()
+{
+  about
+  echo
+  echo "Usage: $PROGNAME [options] [--] [command [arguments]]"
+  echo
+  echo "Valid options are:"
+  cat <<-_eof | column -s\& -t
+	-m|--max & set maximum number of respawns.
+	-q|--quiet & suppress informational messages.
+	-t|--timeout & set timeout for the abort message.
+	-h|--help & show this output.
+	-V|--version & show version information.
+	_eof
+}
+
+exit_with_error()
+{
+  local ret=1
+  case "$1" in
+    *[!0-9-]*) :;;
+    *-|-|?-*) :;;
+    *)
+      ret=$1;
+      [ $ret -lt 0 ] && ret=$((256 + $ret)) || :
+      shift;;
+  esac
+  echo "E: $PROGNAME: $@" >&2
+  exit $ret
+}
+
+info()
+{
+  [ ${quiet:-0} -eq 0 ] || return 0
+  echo "I: $PROGNAME: $@" >&2
+}
+
+cmd=''
+quiet=0
+skiprest=0
+max=-1
+timeout=-1
+for i in "$@"; do
+  if [ $skiprest -eq 0 ]; then
+    case "${getopt:-}" in
+      max) max=$i; unset getopt; continue;;
+      timeout) timeout=$i; unset getopt; continue;;
+    esac
+
+    case "$i" in
+      -q|--quiet) quiet=1; continue;;
+
+      --max=*[!0-9]*) exit_with_error 1 "invalid argument: $i";;
+      --max=[0-9]*) max=${i#--max=}; continue;;
+      -m*[!0-9]*) exit_with_error 1 "invalid argument: $i";;
+      -m[0-9]*) max=${i#-m}; continue;;
+
+      --timeout=*[!0-9]*) exit_with_error 1 "invalid argument: $i";;
+      --timeout=[0-9]*) timeout=${i#--timeout=}; continue;;
+      -t*[!0-9]*) exit_with_error 1 "invalid argument: $i";;
+      -t[0-9]*) timeout=${i#-t}; continue;;
+
+      -m|--max) getopt=max; continue;;
+      -t|--timeout) getopt=timeout; continue;;
+      -h|--help) usage; exit 0;;
+      -V|--version) about; exit 0;;
+      *) skiprest=1;;
+    esac
+  fi
+
+  cmd="${cmd:+$cmd }$i"
+done
+
+[ $max -eq 0 ] && exit 0
+
+timeout_cmd=''
+[ $timeout -gt 0 ] && timeout_cmd="-t $timeout"
+
+eval set -- $cmd
+
+case "$(readlink $(command -v $1))$(command -v $1)" in
+  */dash|dash|dash/bin/sh)
+    exit_with_error -1 "mysteriously, $PROGNAME does not work with dash (#381878). Sorry."
+    ;;
+esac
+
+# require a terminal
+test -t 0 -a -t 1 -a -t 2 || exit_with_error 2 'not connected to a terminal.'
+
+ret=0
+info "Running '$@'..." >&2
+
+while :; do
+  max=$(($max - 1))
+
+  eval "$@" || ret=$?
+
+  [ $max -eq 0 ] && break
+
+  echo -n 'The command finished. Please enter "yes" if you want to exit: '
+  read $timeout_cmd ans || echo
+  [ "$ans" = yes ] && break
+
+  if [ $max -lt 0 ]; then
+    info "Respawning '$@'..." >&2
+    continue
+  elif [ $max -eq 1 ]; then
+    info "Respawning '$@' for the last time..." >&2
+  else
+    info "Respawning '$@' $max more times..." >&2
+  fi
+done
+
+exit $ret
