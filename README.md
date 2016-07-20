@@ -15,8 +15,8 @@ _respawn a process unless the user really wants to quit_
 ## legal junk
 
 This project is copyright © Edward Hernández <ehernandez@email.wm.edu> and
-released under the terms of the Artistic Licence 2.0 available at
-<http://www.perlfoundation.org/artistic_license_2_0/>.
+released under the terms of the GNU General Public License version 3, available
+at <https://www.gnu.org/licenses/gpl.txt>.
 
 This project is a derivative work of a project called 'phoenix', which is
 copyright © martin f. krafft <madduck@madduck.net> and also released under the
